@@ -390,6 +390,21 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__ void topkGatingSoftmax(fl
             }
         }
 
+        // Always select the first two experts
+        //expert = k_idx < 2 ? k_idx : -1; // Select expert 0 for k_idx 0, expert 1 for k_idx 1, and -1 for others
+
+        // Always select two random experts
+        if (k_idx < 2)
+        {
+            max_val = other_max;
+            expert = other_expert;
+            expert = curand(&state) % NUM_EXPERTS; // Select a random expert
+        }
+        else
+        {
+            expert = -1; // For other k_idx values, set expert to -1
+        }
+
         // Write the max for this k iteration to global memory.
         if (thread_group_idx == 0)
         {
