@@ -350,6 +350,10 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__ void topkGatingSoftmax(fl
 
     float renorm_value = 0.0f;
 
+    // Initialize a random number generator
+    curandState state;
+    curand_init(0, blockIdx.x * blockDim.x + threadIdx.x, 0, &state);
+
     for (int k_idx = startk; k_idx < endk; ++k_idx)
     {
         // First, each thread does the local argmax
@@ -387,6 +391,19 @@ __launch_bounds__(WARPS_PER_CTA* WARP_SIZE) __global__ void topkGatingSoftmax(fl
             {
                 max_val = other_max;
                 expert = other_expert;
+            }
+
+            // Always select the first two experts
+            //expert = k_idx < 2 ? k_idx : -1;
+
+            // Always select two random experts
+            if (k_idx < 2)
+            {
+                expert = curand(&state) % NUM_EXPERTS; // Select a random expert
+            }
+            else
+            {
+                expert = -1; // For other k_idx values, set expert to -1
             }
         }
 
