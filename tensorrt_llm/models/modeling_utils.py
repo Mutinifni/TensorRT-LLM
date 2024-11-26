@@ -345,7 +345,13 @@ class DecoderLayerList(ModuleList):
     def __init__(self, cls, config):
         self.num_hidden_layers = config.num_hidden_layers
         self.layer_list = config.mapping.pp_layers(config.num_hidden_layers)
-        super().__init__([cls(config, idx) for idx in self.layer_list])
+        experts_distributions = getattr(config, 'experts_distributions', {})
+        if experts_distributions:
+            assert len(experts_distributions) == self.num_hidden_layers
+        super().__init__([
+            cls(config, idx, experts_distribution=experts_distributions.get(str(idx)))
+            for idx in self.layer_list
+        ])
 
     def forward(self,
                 hidden_states,

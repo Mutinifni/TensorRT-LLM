@@ -39,7 +39,7 @@ from .convert import (load_hf_llama, load_weights_from_gptq,
 
 class LLaMADecoderLayer(Module):
 
-    def __init__(self, config: LLaMAConfig, layer_idx: int):
+    def __init__(self, config: LLaMAConfig, layer_idx: int, experts_distribution: Optional[Tensor] = None):
         super().__init__()
         self.layer_idx = layer_idx
         self.config = config
@@ -77,6 +77,7 @@ class LLaMADecoderLayer(Module):
             mlp_kwargs = {
                 "moe_config": config.moe,
                 "mapping": config.mapping,
+                "experts_distribution": experts_distribution,
             }
         self.mlp = ClsMLP(hidden_size=config.hidden_size,
                           ffn_hidden_size=mlp_hidden_size,

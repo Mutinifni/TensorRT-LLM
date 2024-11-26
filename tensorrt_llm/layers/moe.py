@@ -399,7 +399,8 @@ class MixtureOfExperts(Module):
                  tp_group: List[int] = None,
                  tp_size: int = 1,
                  quant_mode=QuantMode(0),
-                 use_all_reduce=True):
+                 use_all_reduce=True,
+                 experts_distribution: Optional[float] = None):
         super().__init__()
 
         self.moe_config = moe_config
@@ -418,6 +419,12 @@ class MixtureOfExperts(Module):
         self.quant_mode = quant_mode
         self.bias = bias
         self.use_all_reduce = use_all_reduce
+
+        # Normalize and save the experts_distribution as a torch tensor
+        if experts_distribution is not None:
+            experts_distribution = experts_distribution / sum(experts_distribution)
+            experts_distribution = torch.tensor(experts_distribution, dtype=torch.float32)
+        self.experts_distribution = experts_distribution
 
         self.experts_per_node = self.num_experts
         if self.mapping.has_moe_ep():
@@ -506,11 +513,31 @@ class MixtureOfExperts(Module):
                 0, "moe_router")
         routing_input = cast(hidden_states, trt.float32)
         routing = self.router(routing_input, moe_router_lora_params)
+
+        if self.experts_distribution is not None:
+            # Adjust the routing output to follow the desired distribution
+            routing = self.adjust_routing_to_distribution(routing, experts_distribution)
+
         output = self.forward_experts(hidden_states, routing, finished,
                                       lora_layer_params)
         if self.use_all_reduce:
             output = self.forward_allreduce(output, reduce_fusion_params)
         return output
+
+    def adjust_routing_to_distribution(self, routing, experts_distribution):
+        num_tokens, num_experts = routing.shape
+        assert experts_distribution.shape[0] == num_experts, "Distribution size must match number of experts"
+
+        # Sample top-k experts based on the distribution
+        adjusted_routing = torch.zeros_like(routing)
+        for i in range(num_tokens):
+            sampled_experts = torch.multinomial(experts_distribution, self.top_k, replacement=False)
+            adjusted_routing[i, sampled_experts] = routing[i, sampled_experts]
+
+        # Normalize the adjusted routing probabilities to ensure they sum to 1
+        adjusted_routing = adjusted_routing / adjusted_routing.sum(dim=1, keepdim=True)
+
+        return adjusted_routing
 
     def forward_experts(self, hidden_states, routing, finished,
                         lora_layer_params):
